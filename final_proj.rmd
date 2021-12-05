@@ -4,27 +4,107 @@ author: "Jess Laudie"
 date: "12/1/2021"
 output: html_document
 ---
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(ggplot2)
 ```
 
-## R Markdown
+# Question and Background 
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+# Data Processing 
+```{r}
+song_metrics <- read.csv("C:/Users/Owner/OneDrive/Desktop/DS-Final-Project/TaylorSwift.csv")
 
-```{r cars}
-summary(cars)
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+# Exploraory Analysis - Song Metrics and Spotify Features 
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+Some key Spotify metrics that we can explore when discussing Taylor Swift's music is danceability, valence, energy, and length. 
+
+- Danceability: This is how suitable a track is for dancing based on factors like tempo and rhythm. 0.0 is the least danceable and 1.0 is the most danceable.
+- Valence: This describes the positiveness displayed in each track. It is scored from 0.0 to 1.0 with 1.0 being the least positive. Tracks with high valence sounds are likely to be more happy, cheerful, euphoric, etc. while tracks with low valence have more negative sentiments so the music overall sounds more sad, depressing, mad, etc.
+- Energy: A measure from 0.0 to 1.0 and represents the intensity and activity found in each track. A measure of 1.0 feels very fast, loud, and noisy, while a meausure of 0 is the opposite. 
+- Length: duration of the track in milliseconds.
+
+
+```{r}
+# Danceability
+song_metrics = song_metrics[-c(1,6:12,14:15)]
+View(song_metrics)
+summary(song_metrics)
+# average danceability = 0.5925
+# average valence = 0.4173
+# average energy = 0.5777
+# average length = 235662 milliseconds or 3.9 minutes
+
+# Song length for each album 
+ggplot(data = song_metrics, mapping = aes(x = Album, y = Length)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 5, color = "pink")
+
+# Song danceability for each album 
+ggplot(data = song_metrics, mapping = aes(x = Album, y = danceability)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 5, color = "tomato")
+
+# Song energy for each album 
+ggplot(data = song_metrics, mapping = aes(x = Album, y = energy)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 5, color = "blue")
+
+# Song valence for each album 
+ggplot(data = song_metrics, mapping = aes(x = Album, y = valence)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 5, color = "yellow")
+
+# Relationships between variables
+
+ggplot(data = song_metrics, aes(x = valence, y = Length)) +
+  geom_point(alpha = 2, aes(color = Album))
+# More positive songs that rank higher in valence are the shortest songs and
+#Longest songs rank the lowest in valence so they have more sentiments that relate more to sadness, anger, etc.
+# Good mix of songs from each album in terms of theri valence 
+
+
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+
+```
+
+
+# Sentiment Analysis
+
+Taylor Swift 
+
+Fearless 
+
+
+Speak Now 
+
+```{r}
+
+```
+
+Red
+
+```{r}
+
+```
+
+1989
+Reputation
+Lover
+Folklore 
+Evermore
+Fearless TV
+Red TV
+
+# Conclusion 
+
+#Future Work 
