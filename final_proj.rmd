@@ -2,29 +2,202 @@
 title: "DS 3001 Final Project"
 author: "Jess Laudie"
 date: "12/1/2021"
-output: html_document
+output:
+    html_document:
+    toc: TRUE
+    theme: journal
+    toc_float: TRUE
+theme: readable
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r, echo=FALSE, include=FALSE}
+# Loading libraries
+library(e1071)
+library(tidyverse)
+library(plotly)
+library(knitr)
+library(htmltools)
+library(devtools)
+library(NbClust)
+library(DT)
+library(RColorBrewer)
 ```
 
-## Including Plots
+```{r, echo=FALSE, include=FALSE}
+# loading data sets
+audio_features <- read_csv(url("https://raw.githubusercontent.com/kara-koopman/DS3001-Final-Project/main/TaylorSwift.csv"))
+audio_features <- na.omit(audio_features, na.action="omit")
 
-You can also embed plots, for example:
+# cleaning the data - removing the song ID column, making the album a factor level, then normalizing the quantitative data since clustering is a distance based method
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+audio_features$Album <- as.factor(audio_features$Album)
+
+normalize <- function(x){
+ (x - min(x)) / (max(x) - min(x))
+}
+audio_features[,c(3:15)] <- lapply(audio_features[,c(3:15)], normalize)
+
+audio_features <- audio_features[,c(2:16)]
+
+names(audio_features)[names(audio_features) == "instrumentalness"] <- "instrument"
+names(audio_features)[names(audio_features) == "acousticness"] <- "acoustic"
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r, echo = FALSE}
+
+explained_variance = function(data_in, k){
+  
+  # Running the kmeans algorithm.
+  set.seed(1)
+  kmeans_obj = kmeans(data_in, centers = k, algorithm = "Lloyd", iter.max = 30)
+  
+  # Variance accounted for by clusters:
+  # var_exp = intercluster variance / total variance
+  var_exp = kmeans_obj$betweenss / kmeans_obj$totss
+  var_exp  
+}
+```
+
+## Determining the Optimal Number of Clusters
+
+```{r, echo=FALSE, fig.align='center'}
+
+input1 = audio_features[,c(2:13)]
+
+explained_var = sapply(1:10, explained_variance, data_in = input1)
+elbow_data = data.frame(k = 1:10, explained_var)
+
+ggplot(elbow_data, 
+       aes(x = k,  
+           y = explained_var)) + 
+  geom_point(size = 4) +           #<- sets the size of the data points
+  geom_line(size = 1) +            #<- sets the thickness of the line
+  xlab('k') + 
+  ylab('Inter-cluster Variance / Total Variance') + 
+  theme_light()
+
+```
+## Using 3 Clusters
+```{r, echo=FALSE}
+clust_data = audio_features[,c(2:13)]
+set.seed(1)
+three_kmeans = kmeans(clust_data,centers=3,algorithm="Lloyd")
+cluster_audio = as.factor(three_kmeans$cluster)
+audio_features$cluster <- three_kmeans$cluster
+
+ggplot(audio_features, aes(x=valence,
+                           y=energy,
+                           color=Album,
+                           shape=cluster_audio))+
+  
+ geom_point(size = 4) +
+  ggtitle("Valence vs. Energy of Taylor Swift Albums") +
+  xlab("valence") +
+  ylab("energy") +
+  scale_shape_manual(name = "Cluster", 
+                     labels = c("Cluster 1", "Cluster 2", "Cluster 3"),
+                     values = c("1", "2", "3")) +
+  scale_color_manual(name = "Album",         #<- tell R which colors to use and
+                     #   which labels to include in the legend
+                     labels = c('Taylor Swift','Fearless','SpeakNow','Red',
+                                '1989','Reputation','Lover','Folklore','Evermore'),
+                     values = c("blue", "pink", "purple","red", "yellow", "black", "green", "gray","brown")) +
+  theme_light()
+
+```
+```{r}
+ggplot(audio_features, aes(x=acoustic,
+                           y=energy,
+                           color=Album,
+                           shape=cluster_audio))+
+  
+ geom_point(size = 4) +
+  ggtitle("Acousticness vs. Energy of Taylor Swift Albums") +
+  xlab("acousticness") +
+  ylab("energy") +
+  scale_shape_manual(name = "Cluster", 
+                     labels = c("Cluster 1", "Cluster 2", "Cluster 3"),
+                     values = c("1", "2", "3")) +
+  scale_color_manual(name = "Album",         #<- tell R which colors to use and
+                     #   which labels to include in the legend
+                     labels = c('Taylor Swift','Fearless','SpeakNow','Red',
+                                '1989','Reputation','Lover','Folklore','Evermore'),
+                     values = c("blue", "pink", "purple","red", "yellow", "black", "green", "gray","brown")) +
+  theme_light()
+```
+
+
+```{R, echo=FALSE, fig.align='center'}
+grouped <- audio_features %>%
+ group_by(cluster) %>%
+ summarise_if(is.numeric, mean)
+
+grouped <- as.matrix(grouped)
+
+color = brewer.pal(3, name = "Blues")
+
+#evaluating characteristics of each cluster
+statistics <- barplot(grouped[,c(2:8)],
+        beside = TRUE,
+        col = color,
+        legend.text = grouped[,1])
+
+```
+
+```{R, echo=FALSE, fig.align='center'}
+#evaluating characteristics of each cluster
+statistics <- barplot(grouped[,c(9:14)],
+        beside = TRUE,
+        col = color,
+        legend.text = grouped[,1])
+```
+## Using 9 Clusters
+```{r, echo=FALSE}
+clust_data = audio_features[,c(2:13)]
+set.seed(1)
+nine_kmeans = kmeans(clust_data,centers=9,algorithm="Lloyd")
+cluster_audio = as.factor(nine_kmeans$cluster)
+audio_features2<- audio_features
+audio_features2$cluster <- nine_kmeans$cluster
+
+ggplot(audio_features, aes(x=valence,
+                           y=energy,
+                           color=Album,
+                           shape=cluster_audio))+
+  
+ geom_point(size = 4) +
+  ggtitle("Valence vs. Energy of Taylor Swift Albums") +
+  xlab("valence") +
+  ylab("energy") +
+  scale_shape_manual(name = "Cluster", 
+                     labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5","Cluster 6", "Cluster 7", "Cluster 8", "Cluster 9"),
+                     values = c("1", "2", "3", "4","5","6","7","8","9")) +
+  scale_color_manual(name = "Album",         #<- tell R which colors to use and
+                     #   which labels to include in the legend
+                     labels = c('Taylor Swift','Fearless','SpeakNow','Red',
+                                '1989','Reputation','Lover','Folklore','Evermore'),
+                     values = c("blue", "pink", "purple","red", "yellow", "black", "green", "gray","brown")) +
+  theme_light()
+
+```
+```{r, echo=FALSE,fig.align='center'}
+ geom_point(size = 4) +
+  ggtitle("Acousticness vs. Energy of Taylor Swift Albums") +
+  xlab("acousticness") +
+  ylab("energy") +
+  scale_shape_manual(name = "Cluster", 
+                     labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5","Cluster 6", "Cluster 7", "Cluster 8", "Cluster 9"),
+                     values = c("1", "2", "3", "4","5","6","7","8","9")) +
+  scale_color_manual(name = "Album",         #<- tell R which colors to use and
+                     #   which labels to include in the legend
+                     labels = c('Taylor Swift','Fearless','SpeakNow','Red',
+                                '1989','Reputation','Lover','Folklore','Evermore'),
+                     values = c("blue", "pink", "purple","red", "yellow", "black", "green", "gray","brown")) +
+  theme_light()
+```
+
+
