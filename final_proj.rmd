@@ -8,6 +8,11 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyr)
 library(ggplot2)
+library(tidytext)
+library(textdata)
+library(readr)
+library(dplyr)
+
 ```
 
 # Question and Background 
@@ -66,8 +71,21 @@ ggplot(data = song_metrics, aes(x = valence, y = Length)) +
   geom_point(alpha = 2, aes(color = Album))
 # More positive songs that rank higher in valence are the shortest songs and
 #Longest songs rank the lowest in valence so they have more sentiments that relate more to sadness, anger, etc.
-# Good mix of songs from each album in terms of theri valence 
+# Good mix of songs from each album in terms of their valence 
 
+
+theme_set(theme_classic())
+
+# Histogram on a Categorical variable
+g <- ggplot(song_metrics, aes(danceability))
+g + geom_density((aes(fill=Album, alpha=0.1))) + 
+    labs(title="Density plot", 
+         subtitle=,
+         caption=,
+         x="energy",
+         fill="Album")
+
+#displays danceability of each album, lover with highest density of high energy songs, evermore with high density of low energy songs,
 
 
 ```
@@ -86,14 +104,49 @@ Fearless
 
 
 Speak Now 
-
 ```{r}
+
+speak_now = read_lines("C:/Users/Owner/OneDrive/Desktop/DS-Final-Project/SpeakNow.txt")
+
+speak_now <- tibble(speak_now)
+View(speak_now)
+
+speak_now <- speak_now %>%
+  unnest_tokens(word, speak_now)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+View(speak_now)
+
+get_sentiments('bing')
+speak_now_bing <- speak_now %>%
+  inner_join(get_sentiments("bing"))
+
+head(speak_now_bing)
+table(speak_now_bing$sentiment)
 
 ```
 
 Red
-
 ```{r}
+Red = read_lines("C:/Users/Owner/OneDrive/Desktop/DS-Final-Project/Red.txt")
+
+Red <- tibble(Red)
+View(Red)
+
+Red <- Red %>%
+  unnest_tokens(word, Red)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+View(Red)
+
+get_sentiments('bing')
+Red_bing <- Red %>%
+  inner_join(get_sentiments("bing"))
+
+head(Red_bing)
+table(Red_bing$sentiment)
 
 ```
 
