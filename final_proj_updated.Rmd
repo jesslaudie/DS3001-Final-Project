@@ -1,0 +1,751 @@
+<<<<<<< HEAD
+---
+title: "DS 3001 Final Project"
+author: "Jess Laudie"
+date: "12/1/2021"
+output:
+    html_document:
+    toc: TRUE
+    theme: journal
+    toc_float: TRUE
+theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, include=FALSE}
+# Loading libraries
+library(e1071)
+library(tidyverse)
+library(plotly)
+library(knitr)
+library(htmltools)
+library(devtools)
+library(NbClust)
+library(DT)
+library(RColorBrewer)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r, echo=FALSE, include=FALSE}
+# loading data sets
+audio_features <- read_csv(url("https://raw.githubusercontent.com/kara-koopman/DS3001-Final-Project/main/TaylorSwift.csv"))
+audio_features <- na.omit(audio_features, na.action="omit")
+str(audio_features)
+# cleaning the data - removing the song ID column, making the album a factor level, then normalizing the quantitative data since clustering is a distance based method
+
+audio_features[,c('Length','danceability','energy','key','loudness','mode','speechiness','acousticness','instrumentalness','liveness','valence','tempo')] <- lapply(audio_features[,c('Length','danceability','energy','key','loudness','mode','speechiness','acousticness','instrumentalness','liveness','valence','tempo')], as.numeric)
+
+normalize <- function(x){
+ (x - min(x)) / (max(x) - min(x))
+}
+
+audio_features[,c('Length','danceability','energy','key','loudness','mode','speechiness','acousticness','instrumentalness','liveness','valence','tempo')] <- lapply(audio_features[,c('Length','danceability','energy','key','loudness','mode','speechiness','acousticness','instrumentalness','liveness','valence','tempo')], normalize)
+
+names(audio_features)[names(audio_features) == "instrumentalness"] <- "instrument"
+names(audio_features)[names(audio_features) == "acousticness"] <- "acoustic"
+
+song_metrics <-audio_features
+```
+
+# Question and Background
+
+## Taylor Swift
+Add album timelines and any information that could be relevant to her music
+
+## Spotify Audio Features
+To fully capture Taylor's evolution we wanted to consider both quantitative (audio features) and qualitative (natural language processing) aspects of her work. We hypothesized that we would see a progression in both her technical sound and the content of her songs as she pivoted from being a more acoustic, country artist to more of a pop artist.
+
+To consider the technical sound aspects we used 11 quantitative audio features provided by Spotify: acousticness, danceability, energy, instrumentalness, key, liveness, loudness, mode, speechiness, tempo, and valence. For more information on these features [click here](https://developer.spotify.com/documentation/web-api/reference/#/operations/get-several-audio-features)
+
+
+## Natural Language Processing
+
+# Initial Exploraory Analysis - Song Metrics and Spotify Features 
+
+To consider Taylor's music evolution we focused our attention on audio features we suspected would have changed the most from album to album: danceability, valence, energy, and length. Below are plots showing the change in the features over different albums.
+
+
+```{r, echo=FALSE, fig.align='center'}
+# Danceability
+# average danceability = 0.5925
+# average valence = 0.4173
+# average energy = 0.5777
+# average length = 235662 milliseconds or 3.9 minutes
+
+# Song length for each album 
+ggplot(data = song_metrics, mapping = aes(x = Album, y = Length)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 5, color = "green")
+
+# Song danceability for each album 
+ggplot(data = song_metrics, mapping = aes(x = Album, y = danceability)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 5, color = "tomato")
+
+# Song energy for each album 
+ggplot(data = song_metrics, mapping = aes(x = Album, y = energy)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 5, color = "blue")
+
+# Song valence for each album 
+ggplot(data = song_metrics, mapping = aes(x = Album, y = valence)) +
+    geom_boxplot(alpha = 0) +
+    geom_jitter(alpha = 5, color = "orange")
+
+# Relationships between variables
+
+ggplot(data = song_metrics, aes(x = valence, y = Length)) +
+  geom_point(alpha = 2, aes(color = Album))
+# More positive songs that rank higher in valence are the shortest songs and
+#Longest songs rank the lowest in valence so they have more sentiments that relate more to sadness, anger, etc.
+# Good mix of songs from each album in terms of theri valence 
+
+raw <- read_csv(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/TaylorSwift_real.csv"))
+raw[,c(3:14)] <- lapply(raw[,c(3:14)], normalize)
+grouped <- raw %>%
+ group_by(Album) %>%
+ summarise_if(is.numeric, mean)
+
+df <-grouped %>% select(Release,danceability,valence, energy, Length)%>% gather(key="audio_feature", value = "Value", -Release)
+
+# progression over time
+ggplot(df, aes(x = Release, y = Value))+
+  geom_line(aes(color= audio_feature, linetype = audio_feature))+
+  scale_color_manual(values = c('tomato','orange','blue','green'))
+  
+```
+# Clustering Analysis
+
+After developing a general sense of how Taylor's audio features changed over time we wanted to investigate how similar her songs are through clustering analysis. Since our initial analysis showed very different mean values for danceability, energy, length, and valence versus release dates we hypothesized that song audio features would result in distinct clusters for each of the 9 albums considered.
+
+Before clustering the data we first tried to determine the optimal number of clusters using the elbow graph below:
+
+```{r, echo = FALSE}
+
+explained_variance = function(data_in, k){
+  
+  # Running the kmeans algorithm.
+  set.seed(1)
+  kmeans_obj = kmeans(data_in, centers = k, algorithm = "Lloyd", iter.max = 30)
+  
+  # Variance accounted for by clusters:
+  # var_exp = intercluster variance / total variance
+  var_exp = kmeans_obj$betweenss / kmeans_obj$totss
+  var_exp  
+}
+```
+
+
+```{r, echo=FALSE, fig.align='center'}
+# Determining the Optimal Number of Clusters
+
+input1 = audio_features[,c(2:13)]
+
+explained_var = sapply(1:10, explained_variance, data_in = input1)
+elbow_data = data.frame(k = 1:10, explained_var)
+
+ggplot(elbow_data, 
+       aes(x = k,  
+           y = explained_var)) + 
+  geom_point(size = 4) +           #<- sets the size of the data points
+  geom_line(size = 1) +            #<- sets the thickness of the line
+  xlab('k') + 
+  ylab('Inter-cluster Variance / Total Variance') + 
+  theme_light()
+
+```
+
+From the plot we can see that the plot begins to flatten out at k = 3. This is surprising as we had suspected that the data would cluster around the 9 albums. Additionally, we can see that even with 9 centers the clustering still had a relatively low explained variance of a little more than 0.5.
+
+## Using 3 Clusters
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
+clust_data = audio_features[,c(2:13)]
+set.seed(1)
+three_kmeans = kmeans(clust_data,centers=3,algorithm="Lloyd")
+cluster_audio = as.factor(three_kmeans$cluster)
+audio_features$cluster <- three_kmeans$cluster
+
+ggplot(audio_features, aes(x=valence,
+                           y=energy,
+                           color=Album,
+                           shape=cluster_audio))+
+  
+ geom_point(size = 4) +
+  ggtitle("Valence vs. Energy of Taylor Swift Albums") +
+  xlab("valence") +
+  ylab("energy") +
+  scale_shape_manual(name = "Cluster", 
+                     labels = c("Cluster 1", "Cluster 2", "Cluster 3"),
+                     values = c("1", "2", "3")) +
+  scale_color_manual(name = "Album",         #<- tell R which colors to use and
+                     #   which labels to include in the legend
+                     labels = c('Taylor Swift','Fearless','SpeakNow','Red',
+                                '1989','Reputation','Lover','Folklore','Evermore'),
+                     values = c("blue", "pink", "purple","red", "yellow", "black", "green", "gray","brown")) +
+  theme_light()
+
+```
+
+Using three centers and plotting energy vs. valence we can see the three distinct clusters. Cluster 1 is characterized by low valence and low energy; cluster 2 is high energy and high valence; and cluster 3 is lower valence but higher energy than cluster 1. From the color code we can see that clusters are not indicative of the albums and instead shows that these two qualities are distributed across multiple albums.
+
+```{r, echo=FALSE, warning=FALSE,fig.align='center'}
+ggplot(audio_features, aes(x=acoustic,
+                           y=energy,
+                           color=Album,
+                           shape=cluster_audio))+
+  
+ geom_point(size = 4) +
+  ggtitle("Acousticness vs. Energy of Taylor Swift Albums") +
+  xlab("acousticness") +
+  ylab("energy") +
+  scale_shape_manual(name = "Cluster", 
+                     labels = c("Cluster 1", "Cluster 2", "Cluster 3"),
+                     values = c("1", "2", "3")) +
+  scale_color_manual(name = "Album",         #<- tell R which colors to use and
+                     #   which labels to include in the legend
+                     labels = c('Taylor Swift','Fearless','SpeakNow','Red',
+                                '1989','Reputation','Lover','Folklore','Evermore'),
+                     values = c("blue", "pink", "purple","red", "yellow", "black", "green", "gray","brown")) +
+  theme_light()
+```
+
+Similar to the previous plot, the clustering showed that energy and acousticness features are not album specific, but distributed across albums. The plot also helps show the non-linear nature of Taylor's sound. For example, while her second album "Fearless" is highly acoustic her next album "Speak Now" is on the opposite of the graph. We can then see that Taylor went back to her earlier sound in "Red" which is also clustered high in acousticness with Fearless.
+
+Next we decided to consider how each cluster varied from each other by creating bar charts of the grouped means values:
+```{R, echo=FALSE, fig.align='center'}
+grouped <- audio_features %>%
+ group_by(cluster) %>%
+ summarise_if(is.numeric, mean)
+
+grouped <- as.matrix(grouped)
+
+color = brewer.pal(3, name = "Blues")
+
+#evaluating characteristics of each cluster
+statistics <- barplot(grouped[,c(2:7)],
+        beside = TRUE,
+        col = color,
+        legend.text = grouped[,1])
+
+```
+
+
+```{R, echo=FALSE, fig.align='center'}
+#evaluating characteristics of each cluster
+statistics <- barplot(grouped[,c(8:13)],
+        beside = TRUE,
+        col = color,
+        legend.text = grouped[,1])
+```
+
+From the bar graphs, it seems that acousticness and Release are major factors which distinguish group 1, while valence, energy, and danceability are what distinguish group 2. 
+
+From the three center analysis, we can see that clustering using audio features does not seem to be great at distinguish different albums. To confirm this suspicion we will increase the number of centers to 9:
+
+## Using 9 Clusters
+```{r, echo=FALSE, fig.align='center'}
+clust_data = audio_features[,c(2:13)]
+set.seed(1)
+nine_kmeans = kmeans(clust_data,centers=9,algorithm="Lloyd")
+cluster_audio = as.factor(nine_kmeans$cluster)
+audio_features2<- audio_features
+audio_features2$cluster <- nine_kmeans$cluster
+
+ggplot(audio_features, aes(x=valence,
+                           y=energy,
+                           color=Album,
+                           shape=cluster_audio))+
+  
+ geom_point(size = 4) +
+  ggtitle("Valence vs. Energy of Taylor Swift Albums") +
+  xlab("valence") +
+  ylab("energy") +
+  scale_shape_manual(name = "Cluster", 
+                     labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5","Cluster 6", "Cluster 7", "Cluster 8", "Cluster 9"),
+                     values = c("1", "2", "3", "4","5","6","7","8","9")) +
+  scale_color_manual(name = "Album",         #<- tell R which colors to use and
+                     #   which labels to include in the legend
+                     labels = c('Taylor Swift','Fearless','SpeakNow','Red',
+                                '1989','Reputation','Lover','Folklore','Evermore'),
+                     values = c("blue", "pink", "purple","red", "yellow", "black", "green", "gray","brown")) +
+  theme_light()
+
+```
+
+Using 9 centers and recreating the graphs from the three center analysis, we can see that it becomes even harder to distinguish the albums from each other. In each cluster we have multiple different albums with very different release dates.
+
+Just like the three center clustering, the nine center clustering emphasizes how similar Fearless and Red were audio feature wise. Most importantly, this clustering shows that Taylor manages to vary both valence and energy across albums regardless of the release date.
+
+
+```{r, echo=FALSE,fig.align='center'}
+ggplot(audio_features, aes(x=acoustic,
+                           y=energy,
+                           color=Album,
+                           shape=cluster_audio))+
+ geom_point(size = 4) +
+  ggtitle("Acousticness vs. Energy of Taylor Swift Albums") +
+  xlab("acousticness") +
+  ylab("energy") +
+  scale_shape_manual(name = "Cluster", 
+                     labels = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5","Cluster 6", "Cluster 7", "Cluster 8", "Cluster 9"),
+                     values = c("1", "2", "3", "4","5","6","7","8","9")) +
+  scale_color_manual(name = "Album",         #<- tell R which colors to use and
+                     #   which labels to include in the legend
+                     labels = c('Taylor Swift','Fearless','SpeakNow','Red',
+                                '1989','Reputation','Lover','Folklore','Evermore'),
+                     values = c("blue", "pink", "purple","red", "yellow", "black", "green", "gray","brown")) +
+  theme_light()
+```
+
+Next the acousticness vs. energy plot was used using the 9 center clustering data. Once again, "Fearless" and "Red"are highly concentrated in cluster 6 which is characterized by lower energy and higher acousticness. However, we also see a variety of other albums like "1989", "Taylor Swift", and "Speak Now" in this cluster.
+
+While not cluster specific, this plot also shows that her most recent albums ("Reputation", "Lover", "Evermore", and "Folklore") are lower in acousticness and higher in energy. Additionally, the album "1989" acts almost as a transition album between the two distinct zones. 
+
+## Clustering Conclusion
+
+Key takeaways:
+
+* Clustering using song audio features was not very insightful for distinguishing albums (also the explained variance was less than 0.6). This likely because Taylor has used the same producers throughout her career and therefore achieves a similar balance of features across each album. 
+
+* From this we can see that sound of Taylor's earlier albums ("Taylor Swift", "Fearless", "Speak Now", "Red") had the greatest fluctuation jumping between low energy and high acousticness and high energy and low acousticness. 
+
+* Taylor's album "1989" had the greatest variance across individual songs (in both clustering graphs) and acted almost as a transition album to her newer work which has concentrated in the higher energy and lower acousticness zone. 
+
+# Sentiment Analysis
+```{r}
+# Reading in data and setting it up for sentiment analysis
+get_sentiments('afinn')
+get_sentiments('nrc')
+get_sentiments('bing')
+
+# Taylor Swift Album
+ts <- read_lines(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/album_lyrics/tswift"))
+ts <- tibble(ts)
+ts$ts <- as.character(ts$ts)
+ts <- ts %>%
+  unnest_tokens(word, ts)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+# Fearless Album
+fearless <- read_lines(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/album_lyrics/fearless"))
+fearless <- tibble(fearless)
+fearless$fearless <- as.character(fearless$fearless)
+fearless <- fearless %>%
+  unnest_tokens(word, fearless)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+# Speak Now Album
+speak <- read_lines(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/album_lyrics/speak_now")) 
+speak <- tibble(speak)
+speak$speak <- as.character(speak$speak)
+speak <- speak %>%
+  unnest_tokens(word, speak)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+# Red Album
+red <- read_lines(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/album_lyrics/red"))
+red <- tibble(red)
+red$red <- as.character(red$red)
+red <- red %>%
+  unnest_tokens(word, red)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+# 1989 Album
+nineteen89 <- read_lines(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/album_lyrics/1989"))
+nineteen89 <- tibble(nineteen89)
+nineteen89$nineteen89 <- as.character(nineteen89$nineteen89)
+nineteen89<- nineteen89 %>%
+  unnest_tokens(word, nineteen89)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+# Reputation Album
+rep <- read_lines(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/album_lyrics/rep"))
+rep <- tibble(rep)
+rep$rep <- as.character(rep$rep)
+rep <- rep %>%
+  unnest_tokens(word, rep)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+# Lover Album
+lover <- read_lines(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/album_lyrics/lover"))
+lover <- tibble(lover)
+lover$lover <- as.character(lover$lover)
+lover <- lover %>%
+  unnest_tokens(word, lover)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+# Folklore Album 
+folklore <- read_lines(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/album_lyrics/folklore"))
+folklore <- tibble(folklore)
+folklore$folklore <- as.character(folklore$folklore)
+folklore <- folklore %>%
+  unnest_tokens(word, folklore)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+# Evermore Album 
+evermore <- read_lines(url("https://raw.githubusercontent.com/jesslaudie/DS3001-Final-Project/main/album_lyrics/evermore"))
+evermore <- tibble(evermore)
+evermore$evermore <- as.character(evermore$evermore)
+evermore <- evermore %>%
+  unnest_tokens(word, evermore)%>%
+  anti_join(stop_words)%>% 
+  count(word, sort=TRUE)
+
+```
+
+## Sentiment Ranges For Each Album 
+```{r}
+# TS Album
+ts_affin <- ts %>%
+  inner_join(get_sentiments("afinn"))
+ggplot(data = ts_affin, 
+       aes(x=value)
+        )+
+  geom_histogram(color="seagreen", fill="powderblue")+
+  ggtitle("Taylor Swift Album Sentiment Range")+
+  theme_minimal()
+
+# Fearless Album
+fearless_affin <- fearless %>%
+  inner_join(get_sentiments("afinn"))
+ggplot(data = fearless_affin, 
+       aes(x=value)
+        )+
+  geom_histogram(color="burlywood4", fill="lightgoldenrod2")+
+  ggtitle("Fearless Album Sentiment Range")+
+  theme_minimal()
+
+# Speak Now Album
+speak_affin <- speak %>%
+  inner_join(get_sentiments("afinn"))
+ggplot(data = speak_affin, 
+       aes(x=value)
+        )+
+  geom_histogram(color="darkmagenta", fill="deeppink3")+
+  ggtitle("Speak Now Album Sentiment Range")+
+  theme_minimal()
+
+# Red Album
+red_affin <- red %>%
+  inner_join(get_sentiments("afinn"))
+ggplot(data = red_affin, 
+       aes(x=value)
+        )+
+  geom_histogram(color="red4", fill="indianred")+
+  ggtitle("Red Album Sentiment Range")+
+  theme_minimal()
+
+# 1989 Album
+nineteen89_affin <- nineteen89 %>%
+  inner_join(get_sentiments("afinn"))
+ggplot(data = nineteen89_affin, 
+       aes(x=value)
+        )+
+  geom_histogram(color="blueviolet", fill="thistle2")+
+  ggtitle("1989 Album Sentiment Range")+
+  theme_minimal()
+
+# Reputation Album
+rep_affin <- rep %>%
+  inner_join(get_sentiments("afinn"))
+ggplot(data = rep_affin, 
+       aes(x=value)
+        )+
+  geom_histogram(color="gray19", fill="gray82")+
+  ggtitle("Reputation Album Sentiment Range")+
+  theme_minimal()
+
+# Lover Album
+lover_affin <- lover %>%
+  inner_join(get_sentiments("afinn"))
+ggplot(data = lover_affin, 
+       aes(x=value)
+        )+
+  geom_histogram(color="lightskyblue", fill="pink")+
+  ggtitle("Lover Album Sentiment Range")+
+  theme_minimal()
+
+# Folklore Album
+folklore_affin <- folklore %>%
+  inner_join(get_sentiments("afinn"))
+ggplot(data = folklore_affin, 
+       aes(x=value)
+        )+
+  geom_histogram(color="gray68", fill="gray93")+
+  ggtitle("Folklore Album Sentiment Range")+
+  theme_minimal()
+
+# Evermore Album
+evermore_affin <- evermore %>%
+  inner_join(get_sentiments("afinn"))
+ggplot(data = evermore_affin, 
+       aes(x=value)
+        )+
+  geom_histogram(color="coral3", fill="navajowhite3")+
+  ggtitle("Evermore Album Sentiment Range")+
+  theme_minimal()
+
+```
+
+## Word Clouds
+```{r}
+# Taylor Swift Album
+set.seed(42)
+ggplot(ts[1:50,], aes(label = word, size = n, color = n)
+       ) +
+  geom_text_wordcloud() +
+  theme_minimal() + scale_color_gradient(low = "seagreen4", high = "turquoise3") + ggtitle("Taylor Swift Album")
+
+# Fearless
+set.seed(42)
+ggplot(fearless[1:50,], aes(label = word, size = n, color = n)
+       ) +
+  geom_text_wordcloud() +
+  theme_minimal() + scale_color_gradient(low = "goldenrod", high = "burlywood4")+ ggtitle("Fearless Album")
+
+# Speak Now
+set.seed(42)
+ggplot(speak[1:50,], aes(label = word, size = n, color = n)
+       ) +
+  geom_text_wordcloud() +
+  theme_minimal() + scale_color_gradient(low = "deeppink3", high = "darkmagenta") + ggtitle("Speak Now Album")
+
+# Red
+set.seed(42)
+ggplot(red[1:50,], aes(label = word, size = n, color = n)
+       ) +
+  geom_text_wordcloud() +
+  theme_minimal() + scale_color_gradient(low = "indianred", high = "red4")+ ggtitle("Red Album")
+
+# 1989
+set.seed(42)
+ggplot(nineteen89[1:50,], aes(label = word, size = n, color = n)
+       ) +
+  geom_text_wordcloud() +
+  theme_minimal() + scale_color_gradient(low = "mediumpurple1", high = "blueviolet")+ ggtitle ("1989 Album")
+
+# Reputation
+set.seed(42)
+ggplot(rep[1:50,], aes(label = word, size = n, color = n)
+       ) +
+  geom_text_wordcloud() +
+  theme_minimal() + scale_color_gradient(low = "gray66", high = "gray19")+ggtitle("Reputation Album")
+
+# Lover
+set.seed(42)
+ggplot(lover[1:50,], aes(label = word, size = n, color = n)
+       ) +
+  geom_text_wordcloud() +
+  theme_minimal() + scale_color_gradient(low = "palevioletred1", high = "lightskyblue")+ ggtitle("Lover Album")
+
+# Folklore
+set.seed(42)
+ggplot(folklore[1:50,], aes(label = word, size = n, color = n)
+       ) +
+  geom_text_wordcloud() +
+  theme_minimal() + scale_color_gradient(low = "gray68", high = "gray55")+ggtitle("Folklore Album")
+
+# Evermore 
+set.seed(42)
+ggplot(evermore[1:50,], aes(label = word, size = n, color = n)
+       ) +
+  geom_text_wordcloud() +
+  theme_minimal() + scale_color_gradient(low = "navajowhite3", high = "lightsalmon2")+ ggtitle("Evermore Album")
+
+```
+
+## Bing Analysis
+```{r}
+# Bing Analysis
+
+# TS Album
+ts_bing <- ts %>%
+  inner_join(get_sentiments("bing"))
+table(ts_bing$sentiment)
+# neg 42 pos 24
+
+# Fearless
+fearless_bing <- fearless %>%
+  inner_join(get_sentiments("bing"))
+table(fearless_bing$sentiment)
+# neg 47 pos 44
+
+# Speak Now
+speak_bing <- speak %>%
+  inner_join(get_sentiments("bing"))
+table(speak_bing$sentiment)
+#neg 89 pos 47
+
+# Red
+red_bing <- red %>%
+  inner_join(get_sentiments("bing"))
+table(red_bing$sentiment)
+# neg 79 pos 59
+
+# 1989
+nineteen89_bing <- nineteen89 %>%
+  inner_join(get_sentiments("bing"))
+table(nineteen89_bing$sentiment)
+# neg 74 pos 27
+
+# Reputation
+rep_bing <- rep %>%
+  inner_join(get_sentiments("bing"))
+table(rep_bing$sentiment)
+#neg 112 pos 53
+
+# Lover
+lover_bing <- lover %>%
+  inner_join(get_sentiments("bing"))
+table(lover_bing$sentiment)
+#neg 99 pos 55
+
+# Folklore
+folklore_bing <- folklore %>%
+  inner_join(get_sentiments("bing"))
+table(folklore_bing$sentiment)
+# neg 103 pos 35
+
+# Evermore
+evermore_bing <- evermore %>%
+  inner_join(get_sentiments("bing"))
+table(evermore_bing$sentiment)
+# neg 87 pos 55
+
+# Creating a dataframe with the negative and positive values for each album and release dates 
+negative <- c(42, 47, 89, 79, 74, 112, 99, 103, 87)
+positive <- c(24, 44, 47, 59, 27, 53, 55, 35, 55)
+album <- c("Taylor Swift", "Fearless", "Speak Now", "Red", "1989", "Reputation", "Lover", "Folklore", "Evermore")
+release_date <- c(2006, 2008, 2010, 2012, 2014, 2017, 2019, 2020, 2020)
+sentiment <- data.frame(album, release_date, negative, positive, stringsAsFactors=TRUE)
+View(sentiment)
+
+# Normalizing the values for pos and neg
+normalize <- function(x){
+  (x - min(x)) / (max(x) - min(x))
+}
+sentiment$negative <- normalize(sentiment$negative)
+sentiment$positive <- normalize(sentiment$positive)
+View(sentiment)
+
+# Creating graph with just positive and negative values 
+
+plot <- ggplot(sentiment, aes(x=positive, y=negative, color = `album`)) + geom_text(label=album) + ggtitle("Negative vs. Positive Sentiment of Albums") + theme_light()
+plot
+
+# Graphing values in 3D plot using 3 variables (neg, pos, and release date)
+library(plotly)
+fig <- plot_ly(sentiment, 
+               type = "scatter3d",
+               mode="markers",
+               x = ~`release_date`, 
+               y = ~`positive`, 
+               z = ~`negative`,
+               color = ~`album`,
+               text = ~paste('Album:',album))
+fig
+```
+
+
+Taylor Swift 
+```{r}
+
+ts_nrc <- ts %>%
+  inner_join(get_sentiments("nrc"))
+View(ts_nrc)
+
+table(ts_nrc$sentiment)
+
+```
+
+Fearless 
+```{r}
+
+fearless_nrc <- fearless %>%
+  inner_join(get_sentiments("nrc"))
+
+table(fearless_nrc$sentiment)
+
+```
+Speak Now 
+```{r}
+
+speak_nrc <- speak %>%
+  inner_join(get_sentiments("nrc"))
+
+table(speak_nrc$sentiment)
+
+```
+
+Red
+```{r}
+
+red_nrc <- red %>%
+  inner_join(get_sentiments("nrc"))
+table(red_nrc$sentiment)
+
+```
+
+1989
+```{r}
+
+nineteen89_nrc <- nineteen89 %>%
+  inner_join(get_sentiments("nrc"))
+
+table(nineteen89_nrc$sentiment)
+```
+
+Reputation
+```{r}
+
+rep_nrc <- rep %>%
+  inner_join(get_sentiments("nrc"))
+
+
+table(rep_nrc$sentiment)
+
+```
+Lover
+```{r}
+
+lover_nrc <- lover %>%
+  inner_join(get_sentiments("nrc"))
+
+table(lover_nrc$sentiment)
+```
+Folklore 
+```{r}
+
+folklore_nrc <- lover %>%
+  inner_join(get_sentiments("nrc"))
+
+table(folklore_nrc$sentiment)
+
+```
+Evermore
+```{r}
+evermore_nrc <- lover %>%
+  inner_join(get_sentiments("nrc"))
+View(evermore_nrc)
+
+table(evermore_nrc$sentiment)
+
+```
+
+# Conclusion 
+
+#Future Work 
+
+# Future Work
