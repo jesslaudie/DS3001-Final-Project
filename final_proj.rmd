@@ -68,7 +68,7 @@ To consider the technical sound aspects we used 11 quantitative audio features p
 To consider Taylor's music evolution we focused our attention on audio features we suspected would have changed the most from album to album: danceability, valence, energy, and length. Below are plots showing the change in the features over different albums.
 
 
-```{r}
+```{r, echo=FALSE, fig.align='center'}
 # Danceability
 # average danceability = 0.5925
 # average valence = 0.4173
@@ -161,7 +161,7 @@ ggplot(elbow_data,
 From the plot we can see that the plot begins to flatten out at k = 3. This is surprising as we had suspected that the data would cluster around the 9 albums. Additionally, we can see that even with 9 centers the clustering still had a relatively low explained variance of a little more than 0.5.
 
 ## Using 3 Clusters
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
 clust_data = audio_features[,c(2:13)]
 set.seed(1)
 three_kmeans = kmeans(clust_data,centers=3,algorithm="Lloyd")
@@ -191,7 +191,7 @@ ggplot(audio_features, aes(x=valence,
 
 Using three centers and plotting energy vs. valence we can see the three distinct clusters. Cluster 1 is characterized by low valence and low energy; cluster 2 is high energy and high valence; and cluster 3 is lower valence but higher energy than cluster 1. From the color code we can see that clusters are not indicative of the albums and instead shows that these two qualities are distributed across multiple albums.
 
-```{r}
+```{r, echo=FALSE, warning=FALSE,fig.align='center'}
 ggplot(audio_features, aes(x=acoustic,
                            y=energy,
                            color=Album,
@@ -225,7 +225,7 @@ grouped <- as.matrix(grouped)
 color = brewer.pal(3, name = "Blues")
 
 #evaluating characteristics of each cluster
-statistics <- barplot(grouped[,c(2:8)],
+statistics <- barplot(grouped[,c(2:7)],
         beside = TRUE,
         col = color,
         legend.text = grouped[,1])
@@ -235,7 +235,7 @@ statistics <- barplot(grouped[,c(2:8)],
 
 ```{R, echo=FALSE, fig.align='center'}
 #evaluating characteristics of each cluster
-statistics <- barplot(grouped[,c(9:14)],
+statistics <- barplot(grouped[,c(8:13)],
         beside = TRUE,
         col = color,
         legend.text = grouped[,1])
@@ -246,7 +246,7 @@ From the bar graphs, it seems that acousticness and Release are major factors wh
 From the three center analysis, we can see that clustering using audio features does not seem to be great at distinguish different albums. To confirm this suspicion we will increase the number of centers to 9:
 
 ## Using 9 Clusters
-```{r, echo=FALSE}
+```{r, echo=FALSE, fig.align='center'}
 clust_data = audio_features[,c(2:13)]
 set.seed(1)
 nine_kmeans = kmeans(clust_data,centers=9,algorithm="Lloyd")
